@@ -33,6 +33,7 @@ network_policies:
       - { host: platform.claude.com, port: 443 }
     binaries:
       - path: /usr/local/bin/claude
+      - path: /usr/local/bin/nemo-relay
 
   # NeMo Relay exports OpenInference traces to Phoenix running on the host.
   # Scoped to the nemo-relay binary so nothing else can reach this endpoint.
