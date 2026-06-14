@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NeMo Relay runtime config for running `claude` inside an OpenShell sandbox.
+#
+# Request chain:
+#   claude -> nemo-relay (hooks + guardrails + traces) -> https://inference.local
+#             (OpenShell: TLS-terminate, policy check, inject real credentials)
+#             -> upstream provider
+#
+# The NEMO_RELAY_ANTHROPIC_BASE_URL env var set in the Dockerfile overrides the
+# [upstream] value below; both are kept so the routing intent is readable from
+# this file alone.
+
+# Register the wrapped agent. `nemo-relay claude` binds a loopback gateway, sets
+# ANTHROPIC_BASE_URL to it, and launches `claude` as a child so it can record
+# hooks and LLM traffic.
+[agents.claude]
+command = "claude"
+
+[upstream]
+# Forward Anthropic-style /v1/messages traffic to OpenShell's router instead of
+# api.anthropic.com. The router injects the real provider key, so no raw
+# ANTHROPIC_API_KEY ever lives in the sandbox.
+anthropic_base_url = "https://inference.local"

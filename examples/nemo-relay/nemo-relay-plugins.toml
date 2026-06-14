@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NeMo Relay observability exporters for the sandbox image.
+#
+# Exporters are configured here (plugins.toml), NOT in config.toml. The
+# Dockerfile bundles this file to /etc/nemo-relay/plugins.toml.
+#
+# This example exports OpenInference traces to a Phoenix instance running on the
+# HOST. Inside the sandbox the host is NOT reachable as "localhost" (that is the
+# sandbox itself); use host.docker.internal, the alias OpenShell's Docker driver
+# injects. Egress to it must be allowed in sandbox-policy.yaml because the
+# sandbox is deny-by-default.
+#
+# If you do not run Phoenix, delete this file's COPY line in the Dockerfile (or
+# set `enabled = false`) so NeMo Relay does not attempt to export.
+version = 1
+
+[[components]]
+kind = "observability"
+enabled = true
+
+[components.config.openinference]
+enabled = true
+endpoint = "http://host.docker.internal:6006/v1/traces"

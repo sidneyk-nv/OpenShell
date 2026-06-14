@@ -187,14 +187,44 @@ pub fn normalize_provider_type(input: &str) -> Option<&'static str> {
     }
 }
 
-#[must_use]
-pub fn detect_provider_from_command(command: &[String]) -> Option<&'static str> {
-    let first = command.first()?;
-    let basename = Path::new(first)
+/// Known agent wrappers that launch a real agent as a child process. When such
+/// a wrapper leads the command, provider detection looks past it to the inner
+/// agent (for example, `nemo-relay claude` should detect `claude-code`).
+fn is_agent_wrapper(basename: &str) -> bool {
+    matches!(basename.trim().to_ascii_lowercase().as_str(), "nemo-relay")
+}
+
+/// Return the file-name component of a command token (`/usr/bin/claude` ->
+/// `claude`), falling back to the token itself.
+fn command_basename(token: &str) -> &str {
+    Path::new(token)
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or(first);
-    normalize_provider_type(basename)
+        .unwrap_or(token)
+}
+
+#[must_use]
+pub fn detect_provider_from_command(command: &[String]) -> Option<&'static str> {
+    let mut tokens = command.iter();
+    let first = command_basename(tokens.next()?);
+
+    if let Some(provider) = normalize_provider_type(first) {
+        return Some(provider);
+    }
+
+    // The leading token may be a wrapper that runs the real agent as a child
+    // (e.g. `nemo-relay claude`). Skip the wrapper and any leading flags, then
+    // detect the inner agent.
+    if is_agent_wrapper(first) {
+        for token in tokens {
+            if token.starts_with('-') {
+                continue;
+            }
+            return normalize_provider_type(command_basename(token));
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -252,6 +282,42 @@ mod tests {
         assert_eq!(
             detect_provider_from_command(&["gh".to_string()]),
             Some("github")
+        );
+    }
+
+    #[test]
+    fn detects_provider_through_agent_wrapper() {
+        // `nemo-relay claude` should resolve to the inner agent.
+        assert_eq!(
+            detect_provider_from_command(&["nemo-relay".to_string(), "claude".to_string()]),
+            Some("claude-code")
+        );
+        // Wrapper given by absolute path, inner agent by absolute path.
+        assert_eq!(
+            detect_provider_from_command(&[
+                "/usr/local/bin/nemo-relay".to_string(),
+                "/usr/bin/codex".to_string(),
+            ]),
+            Some("codex")
+        );
+        // Leading flags between the wrapper and the agent are skipped.
+        assert_eq!(
+            detect_provider_from_command(&[
+                "nemo-relay".to_string(),
+                "--verbose".to_string(),
+                "claude".to_string(),
+            ]),
+            Some("claude-code")
+        );
+        // Wrapper with no inner agent yields nothing.
+        assert_eq!(
+            detect_provider_from_command(&["nemo-relay".to_string()]),
+            None
+        );
+        // A non-wrapper leading token is not skipped.
+        assert_eq!(
+            detect_provider_from_command(&["bash".to_string(), "claude".to_string()]),
+            None
         );
     }
 }

@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Sandbox policy for `nemo-relay claude`.
+#
+# Egress is deny-by-default. The https://inference.local upstream is intercepted
+# locally by the sandbox proxy (it is not a real network destination), so it
+# needs no network_policies entry here - it works as long as the gateway has
+# inference configured (`openshell inference set ...`).
+#
+# This policy is self-contained: it lists every host the workload needs. On a
+# gateway with provider profile composition disabled (`providers_v2_enabled`
+# defaults to false), attaching the `claude-code` provider injects credentials
+# but does NOT add the provider's endpoints to this policy, so Claude Code's
+# control-plane calls must be allowed explicitly below. The `anthropic` block
+# clears Claude's startup "Unable to connect to Anthropic services" check;
+# actual LLM traffic still flows claude -> nemo-relay -> https://inference.local.
+#
+# Remove the `phoenix` block (and the plugins.toml COPY in the Dockerfile) if
+# you are not collecting traces.
+
+version: 1
+
+network_policies:
+  # Claude Code's control-plane calls (startup connectivity check, telemetry).
+  # LLM inference does NOT go here - it is routed to inference.local. Scoped to
+  # the claude binary so nothing else can reach these hosts.
+  anthropic:
+    name: Anthropic control plane
+    endpoints:
+      - { host: api.anthropic.com, port: 443 }
+      - { host: statsig.anthropic.com, port: 443 }
+      - { host: platform.claude.com, port: 443 }
+    binaries:
+      - path: /usr/local/bin/claude
+
+  # NeMo Relay exports OpenInference traces to Phoenix running on the host.
+  # Scoped to the nemo-relay binary so nothing else can reach this endpoint.
+  phoenix:
+    name: Phoenix traces
+    endpoints:
+      - { host: host.docker.internal, port: 6006 }
+    binaries:
+      - path: /usr/local/bin/nemo-relay
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+  - /usr
+  - /lib
+  - /etc
+  - /app
+  - /var/log
+  - /proc/self
+  - /dev/urandom
+  read_write:
+  # NeMo Relay creates a temporary Claude plugin dir under /tmp and binds its
+  # loopback gateway (127.0.0.1) inside the sandbox.
+  - /sandbox
+  - /tmp
+  - /dev/null
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
