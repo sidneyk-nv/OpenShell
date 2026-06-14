@@ -25,7 +25,7 @@ USER root
 # The tag/path uses the bare version (no leading "v"). The target triple is
 # detected from the build arch so this image builds on both amd64 and arm64.
 # Pin NEMO_RELAY_VERSION to a version that has a published release asset.
-ARG NEMO_RELAY_VERSION=0.3.0-beta.2
+ARG NEMO_RELAY_VERSION=0.4.0
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
